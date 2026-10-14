@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>双摆模拟器 · Double Pendulum</title>
+<style>
+  :root {
+    --bg: #1a1a24;
+    --panel: rgba(30, 32, 48, 0.82);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e6e9f0;
+    --muted: #8b90a0;
+    --accent: #5ad7ff;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+    overflow: hidden;
+  }
+  #stage { position: fixed; inset: 0; display: block; cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+  .hud {
+    position: fixed; top: 18px; left: 18px;
+    padding: 14px 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    font-size: 13px; line-height: 1.9;
+    min-width: 210px;
+    pointer-events: none;
+  }
+  .hud h1 { font-size: 16px; font-weight: 600; letter-spacing: 1px; margin-bottom: 6px; color: var(--accent); }
+  .hud .val { color: var(--accent); font-family: "Consolas", monospace; }
+  .hud .lbl { color: var(--muted); }
+  .panel {
+    position: fixed; right: 18px; top: 18px;
+    width: 280px; padding: 16px 18px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    backdrop-filter: blur(8px);
+    font-size: 13px;
+  }
+  .panel h2 { font-size: 13px; font-weight: 600; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
+  .ctrl { margin-bottom: 12px; }
+  .ctrl label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 6px; }
+  .ctrl label b { color: var(--accent); font-family: "Consolas", monospace; }
+  input[type="range"] {
+    width: 100%; -webkit-appearance: none; height: 4px;
+    border-radius: 2px; background: rgba(255, 255, 255, 0.12); outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%;
+    background: var(--accent); cursor: pointer; box-shadow: 0 0 8px rgba(90, 215, 255, 0.7);
+  }
+  .btn-row { display: flex; gap: 10px; margin-top: 6px; }
+  button {
+    flex: 1; padding: 9px 0; font-size: 13px; font-weight: 600; font-family: inherit;
+    color: var(--text); background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: all 0.15s ease;
+  }
+  button:hover { background: rgba(90, 215, 255, 0.15); border-color: var(--accent); }
+  button.primary { background: var(--accent); color: #10121c; border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.1); }
+  .hint {
+    position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%);
+    font-size: 11px; color: var(--muted); letter-spacing: 1px; pointer-events: none;
+  }
+</style>
+</head>
+<body>
+  <canvas id="stage"></canvas>
+
+  <div class="hud">
+    <h1>双摆模拟器</h1>
+    <div><span class="lbl">θ₁ </span><span class="val" id="hudTh1">—</span>　<span class="lbl">ω₁ </span><span class="val" id="hudW1">—</span></div>
+    <div><span class="lbl">θ₂ </span><span class="val" id="hudTh2">—</span>　<span class="lbl">ω₂ </span><span class="val" id="hudW2">—</span></div>
+    <div><span class="lbl">总能量 E </span><span class="val" id="hudE">—</span></div>
+    <div><span class="lbl">状态 </span><span class="val" id="hudState">运行中</span></div>
+  </div>
+
+  <div class="panel">
+    <h2>参数控制</h2>
+    <div class="ctrl">
+      <label>重力 g <b id="valG">9.8</b></label>
+      <input type="range" id="sliderG" min="1" max="50" value="9.8" step="0.1">
+    </div>
+    <div class="ctrl">
+      <label>摆长 L₁=L₂ <b id="valL">160 px</b></label>
+      <input type="range" id="sliderL" min="80" max="300" value="160" step="1">
+    </div>
+    <div class="ctrl">
+      <label>初始角 θ₁ <b id="valA1">120°</b></label>
+      <input type="range" id="sliderA1" min="-179" max="179" value="120" step="1">
+    </div>
+    <div class="ctrl">
+      <label>初始角 θ₂ <b id="valA2">110°</b></label>
+      <input type="range" id="sliderA2" min="-179" max="179" value="110" step="1">
+    </div>
+    <div class="ctrl">
+      <label>速度 <b id="valSp">2.0×</b></label>
+      <input type="range" id="sliderSp" min="0.5" max="5" value="2" step="0.1">
+    </div>
+    <div class="btn-row">
+      <button id="btnPause" class="primary">暂停</button>
+      <button id="btnReset">重置</button>
+      <button id="btnClear">清空拖尾</button>
+    </div>
+  </div>
+
+  <div class="hint">拖拽摆球改变角度后释放 · 双击复位</div>
+
+<script>
+(function () {
+  const canvas = document.getElementById('stage');
+  const ctx = canvas.getContext('2d');
+
+  // —— 物理常量（等质量 m1=m2=1）——
+  const m1 = 1, m2 = 1;
+  let L1 = 160, L2 = 160;
+  let g = 9.8;
+  let a10 = 120, a20 = 110;   // 初始角 / 度
+  let speed = 2.0;            // 时间倍率
+
+  // 状态向量 [θ1, ω1, θ2, ω2]
+  let state = [a10 * Math.PI / 180, 0, a20 * Math.PI / 180, 0];
+  let running = true;
+
+  const TRAIL_MAX = 400;
+  let trail = [];       // 第二个摆球的拖尾
+  let trail1 = [];      // 第一个摆球的微弱拖尾
+
+  const FIXED_DT = 0.0025;   // RK4 固定步长（400 Hz）
+
+  const elG = document.getElementById('sliderG');
+  const elL = document.getElementById('sliderL');
+  const elA1 = document.getElementById('sliderA1');
+  const elA2 = document.getElementById('sliderA2');
+  const elSp = document.getElementById('sliderSp');
+  const btnPause = document.getElementById('btnPause');
+  const btnReset = document.getElementById('btnReset');
+  const btnClear = document.getElementById('btnClear');
+
+  function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    canvas.style.width = window.innerWidth + 'px';
+    canvas.style.height = window.innerHeight + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function pivot() {
+    return { x: window.innerWidth / 2, y: Math.min(110, window.innerHeight * 0.16) };
+  }
+  function bob1Pos() {
+    const p = pivot();
+    return { x: p.x + L1 * Math.sin(state[0]), y: p.y + L1 * Math.cos(state[0]) };
+  }
+  function bob2Pos() {
+    const b1 = bob1Pos();
+    return { x: b1.x + L2 * Math.sin(state[2]), y: b1.y + L2 * Math.cos(state[2]) };
+  }
+
+  function reset() {
+    state = [a10 * Math.PI / 180, 0, a20 * Math.PI / 180, 0];
+    trail = [];
+    trail1 = [];
+    running = true;
+    btnPause.textContent = '暂停';
+  }
+
+  // —— 双摆拉格朗日运动方程（对 θ1''、θ2''）——
+  function deriv(y) {
+    const th1 = y[0], w1 = y[1], th2 = y[2], w2 = y[3];
+    const d = th1 - th2;
+    const sd = Math.sin(d);
+    const cd = Math.cos(d);
+    const den = 2 * m1 + m2 - m2 * Math.cos(2 * d);
+
+    const a1 = (-g * (2 * m1 + m2) * Math.sin(th1)
+                - m2 * g * Math.sin(th1 - 2 * th2)
+                - 2 * sd * m2 * (w2 * w2 * L2 + w1 * w1 * L1 * cd)) / (L1 * den);
+
+    const a2 = (2 * sd * (w1 * w1 * L1 * (m1 + m2)
+                          + g * (m1 + m2) * Math.cos(th1)
+                          + w2 * w2 * L2 * m2 * cd)) / (L2 * den);
+
+    return [w1, a1, w2, a2];
+  }
+
+  // —— 四阶 Runge-Kutta ——
+  function rk4(y, dt) {
+    const k1 = deriv(y);
+    const k2 = deriv([y[0] + dt / 2 * k1[0], y[1] + dt / 2 * k1[1], y[2] + dt / 2 * k1[2], y[3] + dt / 2 * k1[3]]);
+    const k3 = deriv([y[0] + dt / 2 * k2[0], y[1] + dt / 2 * k2[1], y[2] + dt / 2 * k2[2], y[3] + dt / 2 * k2[3]]);
+    const k4 = deriv([y[0] + dt * k3[0], y[1] + dt * k3[1], y[2] + dt * k3[2], y[3] + dt * k3[3]]);
+    return [
+      y[0] + dt / 6 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0]),
+      y[1] + dt / 6 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1]),
+      y[2] + dt / 6 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2]),
+      y[3] + dt / 6 * (k1[3] + 2 * k2[3] + 2 * k3[3] + k4[3])
+    ];
+  }
+
+  function energy() {
+    const th1 = state[0], w1 = state[1], th2 = state[2], w2 = state[3];
+    const V = -m1 * g * L1 * Math.cos(th1) - m2 * g * (L1 * Math.cos(th1) + L2 * Math.cos(th2));
+    const v1sq = L1 * L1 * w1 * w1;
+    const x2d = L1 * w1 * Math.cos(th1) + L2 * w2 * Math.cos(th2);
+    const y2d = -L1 * w1 * Math.sin(th1) - L2 * w2 * Math.sin(th2);
+    const v2sq = x2d * x2d + y2d * y2d;
+    return 0.5 * m1 * v1sq + 0.5 * m2 * v2sq + V;
+  }
+
+  let last = performance.now();
+  let acc = 0;
+  let lastTrail = 0;
+
+  function frame(now) {
+    let dt = (now - last) / 1000;
+    last = now;
+    dt = Math.min(dt, 0.05);
+    if (running) {
+      acc += dt * speed;
+      let guard = 0;
+      while (acc >= FIXED_DT && guard < 20000) {
+        state = rk4(state, FIXED_DT);
+        acc -= FIXED_DT;
+        guard++;
+      }
+      if (!isFinite(state[0])) reset();
+    } else {
+      acc = 0;
+    }
+
+    const p = pivot();
+    const b1 = bob1Pos();
+    const b2 = bob2Pos();
+
+    if (now - lastTrail > 16) {
+      trail.push({ x: b2.x, y: b2.y });
+      if (trail.length > TRAIL_MAX) trail.shift();
+      trail1.push({ x: b1.x, y: b1.y });
+      if (trail1.length > 120) trail1.shift();
+      lastTrail = now;
+    }
+
+    draw(p, b1, b2);
+    updateHud();
+    requestAnimationFrame(frame);
+  }
+
+  function draw(p, b1, b2) {
+    const w = window.innerWidth, h = window.innerHeight;
+    ctx.clearRect(0, 0, w, h);
+    const bg = ctx.createRadialGradient(p.x, p.y, 20, p.x, p.y, Math.max(w, h) * 0.7);
+    bg.addColorStop(0, '#242431');
+    bg.addColorStop(1, '#1a1a24');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, w, h);
+
+    drawGrid(w, h);
+    drawTrail();
+    drawTrail1();
+
+    // 顶部支架
+    ctx.fillStyle = '#3a3d4f';
+    ctx.fillRect(p.x - 90, p.y - 14, 180, 8);
+    ctx.fillStyle = '#2b2d3a';
+    ctx.fillRect(p.x - 60, p.y - 8, 120, 5);
+
+    // 摆杆
+    ctx.strokeStyle = 'rgba(220, 226, 240, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(b1.x, b1.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+
+    // 支点
+    ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#e6e9f0'; ctx.fill();
+
+    // 第一个摆球（小，淡蓝）
+    ctx.save();
+    ctx.shadowColor = 'rgba(122, 227, 255, 0.7)';
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(b1.x, b1.y, 10, 0, Math.PI * 2);
+    ctx.fillStyle = '#7fc8e8';
+    ctx.fill();
+    ctx.restore();
+
+    // 第二个摆球（彩虹发光）
+    ctx.save();
+    ctx.shadowColor = 'rgba(255, 255, 255, 0.9)';
+    ctx.shadowBlur = 26;
+    const ball = ctx.createRadialGradient(b2.x - 3, b2.y - 5, 1, b2.x, b2.y, 16);
+    ball.addColorStop(0, '#ffffff');
+    ball.addColorStop(0.4, '#9adcff');
+    ball.addColorStop(1, '#3f7fb8');
+    ctx.fillStyle = ball;
+    ctx.beginPath();
+    ctx.arc(b2.x, b2.y, 15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function drawGrid(w, h) {
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.025)';
+    ctx.lineWidth = 1;
+    const gap = 50;
+    ctx.beginPath();
+    for (let x = gap; x < w; x += gap) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+    for (let y = gap; y < h; y += gap) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+    ctx.stroke();
+  }
+
+  function drawTrail() {
+    const n = trail.length;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);          // 0=最旧, 1=最新
+      const pt = trail[i];
+      const hue = t * 300;            // 彩虹渐变
+      const alpha = 0.05 + t * 0.65;  // 衰减
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 0.8 + t * 3.2, 0, Math.PI * 2);
+      ctx.fillStyle = 'hsla(' + hue + ', 95%, 60%, ' + alpha.toFixed(3) + ')';
+      ctx.fill();
+    }
+  }
+
+  function drawTrail1() {
+    const n = trail1.length;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const pt = trail1[i];
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 0.6 + t * 1.6, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(90, 215, 255, ' + (t * 0.25).toFixed(3) + ')';
+      ctx.fill();
+    }
+  }
+
+  function updateHud() {
+    const th1 = state[0] * 180 / Math.PI, th2 = state[2] * 180 / Math.PI;
+    document.getElementById('hudTh1').textContent = th1.toFixed(1) + '°';
+    document.getElementById('hudTh2').textContent = th2.toFixed(1) + '°';
+    document.getElementById('hudW1').textContent = state[1].toFixed(2);
+    document.getElementById('hudW2').textContent = state[3].toFixed(2);
+    document.getElementById('hudE').textContent = energy().toFixed(1) + ' J';
+    document.getElementById('hudState').textContent = running ? '运行中' : '已暂停';
+  }
+
+  // —— 控件绑定 ——
+  elG.addEventListener('input', () => { g = +elG.value; document.getElementById('valG').textContent = g; });
+  elL.addEventListener('input', () => { L1 = L2 = +elL.value; document.getElementById('valL').textContent = L1 + ' px'; });
+  elA1.addEventListener('input', () => { a10 = +elA1.value; document.getElementById('valA1').textContent = a10 + '°'; });
+  elA2.addEventListener('input', () => { a20 = +elA2.value; document.getElementById('valA2').textContent = a20 + '°'; });
+  elSp.addEventListener('input', () => { speed = +elSp.value; document.getElementById('valSp').textContent = speed.toFixed(1) + '×'; });
+
+  btnPause.addEventListener('click', () => {
+    running = !running;
+    btnPause.textContent = running ? '暂停' : '继续';
+  });
+  btnReset.addEventListener('click', reset);
+  btnClear.addEventListener('click', () => { trail = []; trail1 = []; });
+
+  // —— 鼠标拖拽摆球 ——
+  let dragging = 0; // 0=无, 1=第一个球, 2=第二个球
+  function nearestBob(x, y) {
+    const b1 = bob1Pos(), b2 = bob2Pos();
+    const d1 = (x - b1.x) * (x - b1.x) + (y - b1.y) * (y - b1.y);
+    const d2 = (x - b2.x) * (x - b2.x) + (y - b2.y) * (y - b2.y);
+    return d1 <= d2 ? 1 : 2;
+  }
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = nearestBob(e.clientX, e.clientY);
+    running = false;
+    btnPause.textContent = '继续';
+    canvas.classList.add('dragging');
+    dragTo(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (dragging) dragTo(e.clientX, e.clientY);
+  });
+  canvas.addEventListener('pointerup', () => {
+    if (dragging) {
+      state[1] = 0;
+      state[3] = 0;
+      trail = [];
+      trail1 = [];
+      running = true;
+      btnPause.textContent = '暂停';
+    }
+    dragging = 0;
+    canvas.classList.remove('dragging');
+  });
+  canvas.addEventListener('dblclick', () => { reset(); });
+
+  function dragTo(x, y) {
+    const p = pivot();
+    if (dragging === 1) {
+      state[0] = Math.atan2(x - p.x, y - p.y);
+    } else if (dragging === 2) {
+      const b1 = bob1Pos();
+      state[2] = Math.atan2(x - b1.x, y - b1.y);
+    }
+  }
+
+  updateHud();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
