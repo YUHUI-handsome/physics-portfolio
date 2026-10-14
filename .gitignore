@@ -1,0 +1,50 @@
+# ===== 操作系统 =====
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ===== 编辑器 / IDE =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+
+# ===== Jupyter Notebook =====
+.ipynb_checkpoints/
+
+# ===== LaTeX =====
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.bbl
+*.blg
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.gz
+
+# ===== 数据文件 =====
+*.csv.bak
+*.tmp
+*.bak
+
+# ===== 敏感信息 =====
+*.key
+*.pem
+.env
+token.txt
